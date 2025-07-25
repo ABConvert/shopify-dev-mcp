@@ -435,7 +435,7 @@ export async function shopifyTools(server: McpServer): Promise<void> {
       per_page: z
         .number()
         .optional()
-        .default(5)
+        .default(1)
         .describe(
           "Number of results per page. Default is 5. Maximum is 10 to prevent token limit errors.",
         ),
