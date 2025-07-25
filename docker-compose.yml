@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  shopify-dev-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: shopify-dev-mcp:latest
+    container_name: shopify-dev-mcp-server
+
+    # MCP servers communicate via stdio, so we need to keep stdin open
+    stdin_open: true
+    tty: true
+
+    # Environment variables (add as needed)
+    environment:
+      - NODE_ENV=production
+      # Uncomment and set these if needed:
+      # - OPT_OUT_INSTRUMENTATION=1
+      # - POLARIS_UNIFIED=1
+      # - LIQUID_MCP=1
+
+    # If you need to mount local documentation or config files
+    volumes:
+      # Example: Mount local docs directory
+      # - ./docs:/app/docs:ro
+
+      # If you need to persist any data
+      # - shopify-mcp-data:/app/data
+
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+# Uncomment if you need persistent volumes
+# volumes:
+#   shopify-mcp-data:

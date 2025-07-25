@@ -177,6 +177,83 @@ The server is built using the MCP SDK and communicates with Shopify Dev.
 1. Run `npm run test` to run tests
 1. Add an MCP server that runs this command: `node <absolute_path_of_project>/dist/index.js`
 
+## Docker Support
+
+You can run this MCP server in a Docker container:
+
+### Build the Docker image
+
+#### Local Build
+
+```bash
+docker build -t shopify-dev-mcp .
+```
+
+#### Using Pre-built Images from GitHub Container Registry
+
+Pre-built images are available at `ghcr.io/shopify/shopify-dev-mcp`:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/shopify/shopify-dev-mcp:latest
+
+# Or use a specific version
+docker pull ghcr.io/shopify/shopify-dev-mcp:v1.0.0
+```
+
+### Configure MCP to use Docker
+
+Add this to your Cursor or Claude Desktop MCP configuration to run the server via Docker on-demand:
+
+```json
+{
+  "mcpServers": {
+    "shopify-dev-mcp-docker": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "ghcr.io/shopify/shopify-dev-mcp:latest"]
+    }
+  }
+}
+```
+
+The `--rm` flag ensures the container is automatically removed after the MCP session ends, and `-i` keeps stdin open for MCP communication.
+
+### With Environment Variables
+
+```json
+{
+  "mcpServers": {
+    "shopify-dev-mcp-docker": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "OPT_OUT_INSTRUMENTATION=1",
+        "-e",
+        "POLARIS_UNIFIED=1",
+        "ghcr.io/shopify/shopify-dev-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+### Manual Docker Run
+
+You can also run the container manually:
+
+```bash
+docker run -it --rm shopify-dev-mcp
+```
+
+### Docker Compose (for development)
+
+```bash
+docker-compose up
+```
+
 ## License
 
 ISC

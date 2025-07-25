@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "shopify-dev-mcp-docker": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "OPT_OUT_INSTRUMENTATION=1",
+        "-e",
+        "POLARIS_UNIFIED=1",
+        "-e",
+        "LIQUID_MCP=1",
+        "ghcr.io/abconvert/shopify-dev-mcp:latest"
+      ]
+    }
+  }
+}
