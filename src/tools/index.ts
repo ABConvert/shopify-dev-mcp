@@ -85,6 +85,16 @@ export async function searchShopifyDocs(
       }`,
     );
 
+    // Check response size to prevent token limit errors
+    // Assuming ~4 chars per token, 25000 tokens = ~100000 chars
+    const MAX_RESPONSE_CHARS = 90000; // Leave some buffer
+
+    if (responseText.length > MAX_RESPONSE_CHARS) {
+      console.warn(
+        `[search-shopify-docs] Response too large (${responseText.length} chars), will truncate results`,
+      );
+    }
+
     // Try to parse and format as JSON, otherwise return raw text
     try {
       const jsonData = JSON.parse(responseText);
@@ -98,7 +108,26 @@ export async function searchShopifyDocs(
         const totalResults = jsonData.length;
         const startIndex = (page - 1) * perPage;
         const endIndex = startIndex + perPage;
-        const paginatedResults = jsonData.slice(startIndex, endIndex);
+        let paginatedResults = jsonData.slice(startIndex, endIndex);
+
+        // Truncate results if they're still too large
+        let resultString = JSON.stringify(paginatedResults);
+        if (resultString.length > MAX_RESPONSE_CHARS) {
+          // Keep reducing results until under limit
+          while (
+            paginatedResults.length > 1 &&
+            resultString.length > MAX_RESPONSE_CHARS
+          ) {
+            paginatedResults = paginatedResults.slice(
+              0,
+              paginatedResults.length - 1,
+            );
+            resultString = JSON.stringify(paginatedResults);
+          }
+          console.warn(
+            `[search-shopify-docs] Reduced results from ${endIndex - startIndex} to ${paginatedResults.length} items`,
+          );
+        }
 
         const formattedResponse = {
           pagination: {
@@ -108,6 +137,7 @@ export async function searchShopifyDocs(
             total_pages: Math.ceil(totalResults / perPage),
             has_next_page: page < Math.ceil(totalResults / perPage),
             has_previous_page: page > 1,
+            actual_results_returned: paginatedResults.length,
           },
           results: paginatedResults,
         };
@@ -120,9 +150,30 @@ export async function searchShopifyDocs(
         const totalResults = jsonData.total_results || jsonData.results.length;
         const startIndex = (page - 1) * perPage;
         const endIndex = startIndex + perPage;
-        const paginatedResults = Array.isArray(jsonData.results)
+        let paginatedResults = Array.isArray(jsonData.results)
           ? jsonData.results.slice(startIndex, endIndex)
           : jsonData.results;
+
+        // Truncate results if they're still too large
+        if (Array.isArray(paginatedResults)) {
+          let resultString = JSON.stringify(paginatedResults);
+          if (resultString.length > MAX_RESPONSE_CHARS) {
+            // Keep reducing results until under limit
+            while (
+              paginatedResults.length > 1 &&
+              resultString.length > MAX_RESPONSE_CHARS
+            ) {
+              paginatedResults = paginatedResults.slice(
+                0,
+                paginatedResults.length - 1,
+              );
+              resultString = JSON.stringify(paginatedResults);
+            }
+            console.warn(
+              `[search-shopify-docs] Reduced results from ${endIndex - startIndex} to ${paginatedResults.length} items`,
+            );
+          }
+        }
 
         const formattedResponse = {
           pagination: {
@@ -132,18 +183,60 @@ export async function searchShopifyDocs(
             total_pages: Math.ceil(totalResults / perPage),
             has_next_page: page < Math.ceil(totalResults / perPage),
             has_previous_page: page > 1,
+            actual_results_returned: Array.isArray(paginatedResults)
+              ? paginatedResults.length
+              : 1,
           },
           ...jsonData,
           results: paginatedResults,
         };
+
+        // Check final response size
+        const finalResponseText = JSON.stringify(formattedResponse, null, 2);
+        if (finalResponseText.length > MAX_RESPONSE_CHARS) {
+          // If still too large, return error with pagination info
+          return {
+            success: true,
+            formattedText: JSON.stringify(
+              {
+                error: "Response too large even after pagination",
+                suggestion:
+                  "Try using a smaller per_page value or more specific search terms",
+                pagination: formattedResponse.pagination,
+              },
+              null,
+              2,
+            ),
+          };
+        }
+
         return {
           success: true,
-          formattedText: JSON.stringify(formattedResponse, null, 2),
+          formattedText: finalResponseText,
         };
       }
 
       // Otherwise, return as is
       const formattedJson = JSON.stringify(jsonData, null, 2);
+
+      // Check final size
+      if (formattedJson.length > MAX_RESPONSE_CHARS) {
+        return {
+          success: true,
+          formattedText: JSON.stringify(
+            {
+              error: "Response too large",
+              suggestion:
+                "Try using pagination parameters (page, per_page) or more specific search terms",
+              response_size: formattedJson.length,
+              max_allowed_size: MAX_RESPONSE_CHARS,
+            },
+            null,
+            2,
+          ),
+        };
+      }
+
       return {
         success: true,
         formattedText: formattedJson,
@@ -151,6 +244,26 @@ export async function searchShopifyDocs(
     } catch (e) {
       // If JSON parsing fails, return the raw text
       console.warn(`[search-shopify-docs] Error parsing JSON response: ${e}`);
+
+      // Check if raw text is too large
+      if (responseText.length > MAX_RESPONSE_CHARS) {
+        return {
+          success: true,
+          formattedText: JSON.stringify(
+            {
+              error: "Response too large to display",
+              suggestion:
+                "The server returned a very large response. Try using more specific search terms or pagination parameters.",
+              response_size: responseText.length,
+              max_allowed_size: MAX_RESPONSE_CHARS,
+              preview: responseText.substring(0, 1000) + "...",
+            },
+            null,
+            2,
+          ),
+        };
+      }
+
       return {
         success: true,
         formattedText: responseText,
@@ -322,8 +435,10 @@ export async function shopifyTools(server: McpServer): Promise<void> {
       per_page: z
         .number()
         .optional()
-        .default(10)
-        .describe("Number of results per page. Default is 10. Maximum is 50."),
+        .default(5)
+        .describe(
+          "Number of results per page. Default is 5. Maximum is 10 to prevent token limit errors.",
+        ),
     }),
     async (params) => {
       const parameters: Record<string, string> = {
@@ -331,7 +446,7 @@ export async function shopifyTools(server: McpServer): Promise<void> {
           max_num_results: params.max_num_results.toString(),
         }),
         page: params.page.toString(),
-        per_page: Math.min(params.per_page, 50).toString(),
+        per_page: Math.min(params.per_page, 10).toString(),
         ...(polarisUnifiedEnabled && { polaris_unified: "true" }),
       };
 
